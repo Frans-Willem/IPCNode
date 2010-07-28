@@ -1,0 +1,45 @@
+IPCNode
+=======
+Why a new Node.js IPC library?
+------------------------------
+As of writing, this, there are three libraries available that offer RPC client and server packages:
+- Eric Florenzano's node-jsonrpc
+- Ryan Tomayko's bertrpc
+- James Halliday's dnode
+
+The first two both have a very verbose syntax, requiring client.call('method',arguments,returnvalue), and offer no way to nest several objects, use objects as arguments, or return functions.
+dnode is a pretty good fit for most cases, but it never cleans up any marshalled functions or objects, and as such the server will not garbage collect anything unless the connection is closed.
+Furthermore, dnode only supports socket.io or socket as transport layers, and as such can not be used over (for example) standard input/output.
+
+Advantages of IPCNode
+---------------------
+- Explicit reference counting, so no lingering objects.
+- Implements the Node.js Stream interface, so you can easily use any transport layer you want.
+- Event when there are no more cross-boundary objects, so connection can be closed gracefully.
+
+Influences
+----------
+For the whole idea of simple async RPC, I have to thank dnode. Simply defining objects with functions and the ability to simply marshal that to another process is awesome :)
+As for the reference counting, I'll have to thank my Win32 COM background for that :p
+
+Why reference counting
+----------------------
+Dnode will simply assign an ID to any callback function, and on the other side create a stub function that sends the ID over the line.
+The problem with that approach is that callback functions will stay in memory until the connection is discarded. Normally with a few simple static callback functions, this isn't a big problem.
+However, if you plan on calling in your RPC with anonymous functions, you should note that everytime you call something with an anonymous function, that anonymous function will never be garbage collected.
+With reference counting, the server side can indicate when a callback function is no longer needed, and the client can discard it.
+
+To make things easier, IPCNode supplies a helper function for two common approaches:
+- IPCNode.sync to convert a normal synchronous function that returns a value to an asynchronous function with an extra callback argument.
+- IPCNode.async to convert a normal asynchronous function with an existing callback function, to one that will keep a reference to that callback function and dispose of it when it's called.
+
+TODO:
+- Circular objects
+- Combinations of basic objects and callback objects.
+- Proper disposing of unmarshalled Arrays.
+- Make web-browser proof
+- On object creation, send some initial information along the line, to prevent a request command.
+TOWRITE:
+- Getting started
+- Example reference counting
+- 
