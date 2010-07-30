@@ -805,7 +805,12 @@ IPCNode.async=function(func) {
 				args[args.length-1]=(function(f) {
 					var copy=IPCNode.reference(f);
 					return function() {
-						copy.apply(this,Array.prototype.slice.call(arguments));
+						try {
+							copy.apply(this,Array.prototype.slice.call(arguments));
+						}
+						catch(e) {
+							//Do nothing
+						}
 						IPCNode.dispose(copy);
 					};
 				})(last);
@@ -824,30 +829,24 @@ IPCNode.async=function(func) {
 IPCNode.sync=function(func) {
 	return function() {
 		var args=Array.prototype.slice.call(arguments);
-		var copy;
+		var resultCallback;
+		var returnValue;
 		var last;
 		var caught;
-		var ret;
 		if (args.length>0) {
 			last=args[args.length-1];
-			if (typeof(last)==="function")
-				copy=IPCNode.reference(args.pop());
+			if (typeof(last)==="function") {
+				resultCallback=args.pop();
+			}
 		}
 		try {
-			ret=func.apply(this,args);
+			returnValue=func.apply(this,args);
 		}
 		catch(e) {
 			caught=e;
 		}
-		if (copy!==undefined) {
-			try {
-				copy(ret);
-			}
-			catch(e) {
-				caught=e;
-			}
-			IPCNode.dispose(copy);
-		}
+		if (resultCallback)
+			resultCallback(returnValue);
 		if (caught!==undefined)
 			throw caught;
 	};
