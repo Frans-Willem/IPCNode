@@ -16,6 +16,7 @@ Advantages of IPCNode
 - Explicit reference counting, so no lingering objects.
 - Implements the Node.js Stream interface, so you can easily use any transport layer you want.
 - Event when there are no more cross-boundary objects, so connection can be closed gracefully.
+- Circular objects are fully supported.
 
 Influences
 ----------
@@ -33,13 +34,94 @@ To make things easier, IPCNode supplies a helper function for two common approac
 - IPCNode.sync to convert a normal synchronous function that returns a value to an asynchronous function with an extra callback argument.
 - IPCNode.async to convert a normal asynchronous function with an existing callback function, to one that will keep a reference to that callback function and dispose of it when it's called.
 
+Getting started
+---------------
+To get started, just create an IPC endpoint by doing 'new IPCNode()'. This will yield you a readable and writeable stream, which you should connect to another IPC endpoint in another (or the same process).
+The simplest way to do this is to simply set up a socket connection, and call sys.pump.
+When the IPCNode is wired up propertly, you can do ipcnode.register(some objects) to pass to the other side. This will trigger the "register" event at the other endpoint.
+To determine when there will be no more IPC-communications happening, listen for the "clean" event.
+
+I highly suggest just reading the examples in the examples subdirectory.
+
+Reference counting
+------------------
+Because in JavaScript IPCNode has no way to know when a marshalled object is no longer used, you will have to explicitly tell it when you are and aren't using objects.
+Normally, objects will be valid for the duration of the call from IPCNode. This means that during the "register" events those objects are valid, and during a call all arguments are valid.
+If you intend to use an object after the function has returned, you should get a reference to it, you can do so by:
+	var ref=IPCNode.reference(some object);
+This will tell IPCNode that you made a copy of the object, and as such it shouldn't destroy it yet after the function ends.
+IPCNode.reference will return the same object, but it helps to treat it as if it was a new copy.
+When you are done with an object, you should call IPCNode.dispose(obj).
+
+Internally, IPCNode will keep track of how many times you have referenced an object, and once you called dispose just as much, will destroy the object.
+However, it's easier to think about it as as IPCNode.reference making a copy, and IPCNode.dispose properly disposing of that copy.
+
+Note that if a marshalled object contains other objects, there is no need to keep a reference to those objects.
+e.g., let's say you had:
+	var one={
+		two: {
+			three: function() {}
+		}
+	};
+Then
+	var onecopy=IPCNode.reference(one);
+Would ensure that onecopy.two and onecopy.two.three will stay valid as long as onecopy is.
+
+Reference counting helpers
+--------------------------
+If you have a simple asynchronous function, of which the last argument is a callback function that will be called once, you can use IPCNode.async to wrap it with reference counting.
+Basically IPCNode.async will take the last argument given, keep a reference to that, and replace it with a new function that will call the reference and dispose of it once called.
+
+If you have a function that synchronously returns a value, you can wrap it with IPCNode.sync.
+This will create a new function with an extra callback argument that will get referenced and called upon return.
+
+Pitfalls
+--------
+Circular structures are supported, but watch out for circular objects going cross-boundary.
+e.g. let's say you have
+	var a={other: b};
+	var b={other: a};
+and a is in process 1, and b in process 2.
+This would mean that process 1 would keep a reference to object b, and process 2 would keep a reference to object a, and as such both objects will never be cleaned by the garbage collection, and the IPCNode will never get clean.
+
+Furthermore, this for functions is properly marshalled.
+if you have:
+	var increasing={counter:0,increase:function() {this.counter++}};
+	var decreasing={counter:100,decrease:function() {this.counter--}};
+Then it will still be possible to get increasing to decrease, for example by doing:
+	decreasing.decrease.apply(increasing)
+This is also possible across process-boundaries, so if functions should not be called on different objects, use something like Function.bind().
+
+Speed vs. bandwidth
+-------------------
+IPCNode can either send the bare minimum, and have the other side possibly request more information on certain objects when it needs to, or it can send everything every time.
+If it only sends the bare minimum, the other side might have to do a few requests before it can successfully marshal a call or register event.
+If it sends everything all the time, it'll be sending a lot of information the other side probably already has.
+Which roughly translates to:
+	Sending the bare minimum:
+	- Overall less bandwidth usage as things can be cached
+	- Slower, as several round-trips might be needed to negotiate what should be sent.
+	If you send everything all
+	- Lots of bandwidth, as even duplicate information will be sent.
+	- Faster, as no negotiation is needed on what should be sent.
+To tell IPCNode to use the bare minimum, set
+	IPCNode.defaultPrepareCount=0;
+To tell IPCNode to always send all, set
+	IPCNode.defaultPrepareCount=-1;
+To tell IPCNode to always send information on the first x objects arguments encountered, set
+	IPCNode.defaultPrepareCount=x;
+	
+There are plans to have IPCNode estimate if the other side already has some information, and only send if it probably doesn't, but those plans are not implemented yet.
+
+
+Using in the browser
+--------------------
+IPCNode currently makes heavy use of things like Array.prototype.forEach, and Object.defineProperty, and inherits from EventEmitter.
+This means that in its current form, it will not work in the browser.
+There are, however, plans to change that :)
+
+TODO
+----
 TODO:
-- Circular objects
-- Combinations of basic objects and callback objects.
-- Proper disposing of unmarshalled Arrays.
 - Make web-browser proof
-- On object creation, send some initial information along the line, to prevent a request command.
-TOWRITE:
-- Getting started
-- Example reference counting
-- 
+- When local object is marshalled for the first time, send some prepared info down the line.
