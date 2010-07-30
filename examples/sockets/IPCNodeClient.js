@@ -2,11 +2,32 @@ var sys=require("sys");
 var net=require("net");
 var IPCNode=require("../../IPCNode").IPCNode;
 
+var isDebug=true;
+
 var client=net.createConnection(81234);
 var ipc=new IPCNode();
 client.on("connect",function() {
-	sys.pump(client,ipc,function() { ipc.end(); sys.puts("Connection closed"); });
-	sys.pump(ipc,client,function() { client.end(); client.destroy() });
+	if (!isDebug) {
+		sys.pump(client,ipc,function() { ipc.end(); sys.puts("Connection closed"); });
+		sys.pump(ipc,client,function() { client.end(); client.destroy() });
+	} else {
+		client.on("data",function(data) {
+			data.toString().split("\n").forEach(function(line) {
+				if (line.length<1)
+					return;
+				sys.puts(">> "+line);
+			});
+			ipc.write(data);
+		});
+		ipc.on("data",function(data) {
+			data.toString().split("\n").forEach(function(line) {
+				if (line.length<1)
+					return;
+				sys.puts("<< "+line);
+			});
+			client.write(data);
+		});
+	}
 });
 client.on("error",function(e) {
 	sys.puts("Client error: "+e.toString());
@@ -30,4 +51,7 @@ ipc.on("register",function(name,obj) {
 			IPCNode.dispose(copy);
 		});
 	}
+});
+ipc.on("clean",function() {
+	sys.puts("IPC channel clean");
 });

@@ -34,11 +34,11 @@ net.createServer(function(client) {
 		sys.pump(ipc,client,function() { ipc.end(); });
 		sys.pump(client,ipc,function() { client.end(); client.destroy(); });
 		
-		ipc.on("error",function(e) {
+		/*ipc.on("error",function(e) {
 			sys.puts("IPC error: "+e.toString());
 			client.end();
 			client.destroy();
-		});
+		});*/
 		ipc.on("clean",function(from) {
 			sys.puts("IPC stream is clean, no more cross-process oject references");
 			ipc.end();

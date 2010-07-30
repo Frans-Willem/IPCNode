@@ -1,0 +1,80 @@
+[command,[1,2,3,{},4,{}],
+1.Command (string or integer, see IPCNode.commands)
+2.Table of all used remote (e.g. owned by sender) objects.
+	Key = id
+	Value: type or [type,properties] (type being one of IPCNode.objectTypes)
+	Should call release on any not used.
+4+.Arguments all marshalled objects
+
+Marshalled values:
+	null, undefined, string, number, boolean -> stay the same
+	Array -> array with same rules applied
+	Object/function ->
+		Global -> {t:IPCNode.objectSource.global}
+		Object on receiving side: -> {t:IPCNode.objectSource.local,i:(id)}
+		Object on sending side: -> {t:IPCNode.objectSource.marshalled,i:(id)} //Should be in marshalled objects table!
+Object properties:
+	Table with property -> marshalled value. If marshalled value 
+	
+_localObjects table contains following objects:
+	{
+		id: id, //Key in _localObjects
+		refCount: number,
+		object: actual object //where object will also get a new properties __ipc_id_(IPCNode id) pointing back to that id.
+	}
+_remoteObjects table contains following objects:
+	{
+		id: id, //Key in _remoteObjects table
+		refCount: number, //Number of internal references
+		externalRefCount: number, //Number of external references (To protect from IPCNode.release to mess up internal references)
+		usedBy: {}, //Remote used by this object, id -> key, _remoteObjects entry -> value
+		uses: {}, //Remote objects this object uses, id -> key, _remoteObjects entry -> value
+		usedLocals: {} //Local objects this object uses (and keeps a reference on!) id -> key, _localObjects entry -> value
+		hasProperties: false, //Has it had properties applied already?
+		hasRequested: false, //Have we already requested properties?
+		type: "f" or "o"
+		stub: local representation of object,
+		isReady: boolean, //Is this object ready to be used? e.g. are all objects properly referenced?
+		readyCallbacks: array
+	}
+Stub objects contain:
+	{
+		__ipc_owner: owner IPC document
+		__ipc_object: item in remoteObjects table (see above)
+	}
+IPCNode._isRemoteObjectReady=function(remoteObject,presumeReady) {
+	if (typeof(presumeReady)==="object" && presumeReady[remoteObject.id])
+		return true;
+	if (remoteObject.isReady)
+		return true;
+	if (typeof(properties)!=="object")
+		return false;
+	presumeReady[remoteObject.id]=true;
+	var queue=[];
+	for (var key in remoteObject.properties)
+		queue.push(remoteObject.properties[k]);
+	var ret=true;
+	while (ret && queue.length>0) {
+		var current=q.pop();
+		if (typeof(current)==="function" || typeof(current)==="object")
+			continue;
+		if (Array.isArray(current)) {
+			current.forEach(function(x) { queue.push(x); });
+			continue;
+		}
+		if (typeof(current.__ipc_owner)!=="object")
+			continue;
+		if (!this._isRemoteObjectReady(current.__ipc_object,presumeReady))
+			ret=false;
+	}
+	delete presumeReady[remoteObject.id];
+	return ret;
+}
+
+When to actually release a remote object ?
+	refCount == 0?
+	for all objects in usedBy table:
+		can this be released (given that this object will be released?)
+	if (all yes)
+		release object, and for all also remote objects in properties, remove self from usedBy.
+	
