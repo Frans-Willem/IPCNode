@@ -182,7 +182,7 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			objectTable={},
 			newMarshalled=[],
 			requested=[],
-			i,id,object,currentInfo;
+			i,id,object,currentInfo,currentProperties;
 		function marshalLocalObjectCallback(localObject) {
 			var marshalInfo=self._marshalLocalObject(localObject,objectTable),
 				id=marshalInfo[0],
@@ -208,7 +208,8 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 		requested.forEach(function(x) {
 			var id=x.id,
 				object=x.object,
-				currentInfo;
+				currentInfo,
+				currentProperties;
 			if (!isNumeric(id)) {
 				return;
 			}
@@ -216,7 +217,12 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			if (typeof(currentInfo)==="undefined" || typeof(currentInfo)==="object") {
 				return; //Either non-existing, or already done
 			}
-			objectTable[id]=[currentInfo,self._marshalProperties(object,marshalLocalObjectCallback)];
+			currentInfo=[currentInfo];
+			currentProperties=self._marshalProperties(object,marshalLocalObjectCallback);
+			if (currentProperties) {
+				currentInfo[1]=currentProperties;
+			}
+			objectTable[id]=currentInfo;
 		});
 		//Prepare newly marshalled objects
 		for (i=0; i<newMarshalled.length; i++) {
@@ -225,7 +231,12 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			if (isNumeric(id)) {
 				currentInfo=objectTable[id];
 				if (typeof(currentInfo)!=="undefined" && typeof(currentInfo)!=="object") {
-					objectTable[id]=[currentInfo,self._marshalProperties(object,marshalLocalObjectCallback)];
+					currentInfo=[currentInfo];
+					currentProperties=self._marshalProperties(object,marshalLocalObjectCallback);
+					if (currentProperties) {
+						currentInfo[1]=currentProperties;
+					}
+					objectTable[id]=currentInfo;
 				}
 			}
 		}
@@ -240,7 +251,7 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			objectTable={},
 			newMarshalled=[],
 			marshalledArgs,
-			i,id,object,currentInfo;
+			i,id,object,currentInfo,currentProperties;
 		function marshalLocalObjectCallback(localObject) {
 			var marshalInfo=self._marshalLocalObject(localObject,objectTable),
 				id=marshalInfo[0],
@@ -258,7 +269,12 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			if (isNumeric(id)) {
 				currentInfo=objectTable[id];
 				if (typeof(currentInfo)!=="undefined" && typeof(currentInfo)!=="object") {
-					objectTable[id]=[currentInfo,self._marshalProperties(object,marshalLocalObjectCallback)];
+					currentInfo=[currentInfo];
+					currentProperties=self._marshalProperties(object,marshalLocalObjectCallback);
+					if (currentProperties) {
+						currentInfo[1]=currentProperties;
+					}
+					objectTable[id]=currentInfo;
 				}
 			}
 		}
@@ -288,13 +304,15 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 	};
 	IPCNode.prototype._marshalProperties=function(object,marshalLocalObjectCallback) {
 		var ret={},
-			key;
+			key,
+			added=false;
 		for (key in object) {
 			if (key.substr(0,6)!=="__ipc_") {
 				ret[key]=this._marshalValue(object[key],marshalLocalObjectCallback);
+				added=true;
 			}
 		}
-		return ret;
+		return added?ret:undefined;
 	};
 	/**
 	 * Prepares a local object for marshalling
@@ -531,7 +549,7 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 			if (isNumeric(id)) {
 				type=objectTable[id];
 				if (typeof(type)==="object") {
-					infoCache[id]=type[1];
+					infoCache[id]=type[1] || {};
 					type=type[0];
 				}
 				remoteObject=this._remoteObjects[id];
