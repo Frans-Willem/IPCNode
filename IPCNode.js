@@ -101,6 +101,10 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 		marshalled: isDebug?"marshalled":1,
 		global: isDebug?"global":2
 	};
+	IPCNode.objectTypes={
+		"object": isDebug?"object":0,
+		"function": isDebug?"function":1
+	};
 	/****************\
 	* Outgoing stuff *
 	\****************/
@@ -133,7 +137,7 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 				if (!isNumeric(cur)) {
 					continue;
 				}
-				this._waitingReleases.push(cur);
+				this._waitingReleases.push(parseInt(cur,10));
 			}
 		} else {
 			command=[IPCNode.commands.release];
@@ -142,7 +146,7 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 				if (!isNumeric(cur)) {
 					continue;
 				}
-				command.push(cur);
+				command.push(parseInt(cur,10));
 			}
 			if (command.length>1) {
 				this._emitObject(command);
@@ -276,9 +280,9 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 				if (typeof(value.__ipc_object)!=="object") {
 					throw new Error("Attempt to use disposed object");
 				}
-				return {t:IPCNode.objectSource.local,i:value.__ipc_object.id};
+				return {t:IPCNode.objectSource.local,i:parseInt(value.__ipc_object.id,10)};
 			}
-			return {t:IPCNode.objectSource.marshalled,i:marshalLocalObjectCallback(value)};
+			return {t:IPCNode.objectSource.marshalled,i:parseInt(marshalLocalObjectCallback(value),10)};
 		}
 		throw new Error("Unable to marshal value: "+value);
 	};
@@ -305,14 +309,12 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 		if (typeof(localObject)!=="object" || this._localObjects[localObject.id]!==localObject) {
 			id=this._idp.alloc();
 			localObject=object["__ipc_info_"+this._id]=this._localObjects[id]={id:id,refCount:1,object:object};
-			type=typeof(object);
-			objectTable[id]=type.substr(0,1);
+			objectTable[id]=IPCNode.objectTypes[typeof(object)];
 			return [id,true];
 		} else {
 			id=localObject.id;
 			if (typeof(objectTable[id])==="undefined") {
-				type=typeof(object);
-				objectTable[id]=type.substr(0,1);
+				objectTable[id]=IPCNode.objectTypes[typeof(object)];
 				localObject.refCount++;
 			}
 			return [localObject.id,false];
@@ -535,8 +537,8 @@ function IPCNodeModule(exports,IDProvider,EventEmitter) {
 				remoteObject=this._remoteObjects[id];
 				if (typeof(remoteObject)!=="object") {
 					switch (type) {
-						case "f": stub=createStubFunction(); break;
-						case "o": stub={}; break;
+						case IPCNode.objectTypes["function"]: stub=createStubFunction(); break;
+						case IPCNode.objectTypes["object"]: stub={}; break;
 						default: throw new Error("Unable to unmarshal object: unknown type "+type);
 					}
 					Object.defineProperty(stub,"__ipc_owner",{value:this,enumerable:false,configurable:true});
